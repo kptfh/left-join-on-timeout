@@ -1,6 +1,5 @@
 package kafkastreams.leftjoin;
 
-import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.Serde;
@@ -8,14 +7,17 @@ import org.apache.kafka.streams.kstream.JoinWindows;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
 import org.apache.kafka.streams.kstream.ValueJoiner;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
 
 import static org.apache.commons.lang3.Validate.isTrue;
 import static org.apache.commons.lang3.Validate.notNull;
 
-@Slf4j
 public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
+
+    private static Logger logger = LoggerFactory.getLogger(LeftJoinOnTimeoutBuilder.class);
 
     public static final String SCHEDULED_STATE_STORE_PREFIX = "LJ_TIME_OUT";
     public static final long DEFAULT_TIMEOUT_GAP_IN_MS = 100;
@@ -151,7 +153,7 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
             ProducerRecord<K, JV> leftJoinedRecord = new ProducerRecord<>(
                     joinTopicName, null, scheduled.timestamp,
                     scheduled.key, joiner.apply(scheduled.value, null));
-            log.warn("Left joined message send on window end {}", leftJoinedRecord);
+            logger.warn("Left joined message send on window end {}", leftJoinedRecord);
             producer.send(leftJoinedRecord);
         };
     }

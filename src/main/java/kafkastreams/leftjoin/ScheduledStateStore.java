@@ -2,19 +2,21 @@ package kafkastreams.leftjoin;
 
 import kafkastreams.leftjoin.utils.BlockingScheduledExecutor;
 import kafkastreams.leftjoin.utils.StateStoreLogger;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.streams.KeyValue;
 import org.apache.kafka.streams.processor.ProcessorContext;
 import org.apache.kafka.streams.processor.StateStore;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-@Slf4j
 public class ScheduledStateStore<K, V> implements StateStore {
+
+    private static Logger logger = LoggerFactory.getLogger(ScheduledStateStore.class);
 
     private final String name;
     private final long delayInMs;
@@ -53,7 +55,7 @@ public class ScheduledStateStore<K, V> implements StateStore {
         if(stateLogEnabled) {
             stateLogger.logAdded(key, scheduled);
         }
-        log.debug("Scheduled task {} for key {}", scheduled, key);
+        logger.debug("Scheduled task {} for key {}", scheduled, key);
     }
 
     private void scheduleImpl(Scheduled<K, V> scheduled){
@@ -78,9 +80,9 @@ public class ScheduledStateStore<K, V> implements StateStore {
                 stateLogger.logRemoved(key);
             }
         } else {
-            log.warn("No scheduled task for key: {}", key);
+            logger.warn("No scheduled task for key: {}", key);
         }
-        log.debug("Cancelled scheduled task {} for key {}", scheduled, key);
+        logger.debug("Cancelled scheduled task {} for key {}", scheduled, key);
     }
 
     @Override
@@ -96,7 +98,7 @@ public class ScheduledStateStore<K, V> implements StateStore {
             context.register(this, true, (k, v) -> {
                 KeyValue<K, Scheduled<K, V>> keyValue = stateLogger.readChange(k, v);
                 scheduleImpl(keyValue.value);
-                log.debug("Scheduled task {} restored for key {}", keyValue.value, keyValue.key);
+                logger.debug("Scheduled task {} restored for key {}", keyValue.value, keyValue.key);
             });
         }
 

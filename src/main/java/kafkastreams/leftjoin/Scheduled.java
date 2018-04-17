@@ -3,16 +3,11 @@ package kafkastreams.leftjoin;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import lombok.Getter;
-import lombok.ToString;
-import org.apache.commons.lang3.Validate;
 
 import java.util.concurrent.ScheduledFuture;
 
 import static org.apache.commons.lang3.Validate.isTrue;
 
-@ToString
-@Getter
 public class Scheduled<K, V> {
     public final K key;
     public final V value;
@@ -33,5 +28,14 @@ public class Scheduled<K, V> {
     public void setScheduledFuture(ScheduledFuture scheduledFuture) {
         isTrue(this.scheduledFuture == null, "Already initialized");
         this.scheduledFuture = scheduledFuture;
+    }
+
+    public ScheduledFuture getScheduledFuture() {
+        return scheduledFuture;
+    }
+
+    @Override
+    public String toString(){
+        return String.format("key=%s, value=%s, timestamp=%s", key, value, timestamp);
     }
 }

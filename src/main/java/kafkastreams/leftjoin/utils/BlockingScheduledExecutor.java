@@ -1,14 +1,16 @@
 package kafkastreams.leftjoin.utils;
 
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
-@Slf4j
 public class BlockingScheduledExecutor {
+
+    private static Logger logger = LoggerFactory.getLogger(BlockingScheduledExecutor.class);
 
     private final ScheduledThreadPoolExecutor executor;
     private final Semaphore semaphore;
@@ -34,7 +36,7 @@ public class BlockingScheduledExecutor {
                     try {
                         semaphore.release();
                     } catch (Error e) {
-                        log.warn("Excessive semaphore release", e);
+                        logger.warn("Excessive semaphore release", e);
                     }
                 }
             }
@@ -47,7 +49,7 @@ public class BlockingScheduledExecutor {
             try {
                 semaphore.release();
             } catch (Error e) {
-                log.warn("Excessive semaphore release", e);
+                logger.warn("Excessive semaphore release", e);
             }
             return true;
         } else {

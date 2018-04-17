@@ -40,7 +40,6 @@
 
         <kafka-streams.version>0.11.0.2</kafka-streams.version>
         <kafka-clients.version>0.11.0.2</kafka-clients.version>
-        <lombok.version>1.16.18</lombok.version>
         <slf4j-api.version>1.7.25</slf4j-api.version>
 
         <!-- Tests -->
@@ -71,13 +70,6 @@
             <groupId>org.apache.kafka</groupId>
             <artifactId>kafka-clients</artifactId>
             <version>${kafka-clients.version}</version>
-        </dependency>
-
-
-        <dependency>
-            <groupId>org.projectlombok</groupId>
-            <artifactId>lombok</artifactId>
-            <version>${lombok.version}</version>
         </dependency>
 
         <dependency>
