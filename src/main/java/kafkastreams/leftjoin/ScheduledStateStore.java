@@ -9,8 +9,6 @@ import org.apache.kafka.streams.processor.StateStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
@@ -21,8 +19,7 @@ public class ScheduledStateStore<K, V> implements StateStore {
     private final String name;
     private final long delayInMs;
     private final ScheduledTaskTransformer<K, V> scheduledTaskTransformer;
-    private final BlockingScheduledExecutor executor;
-    private final Map<K, Scheduled<K, V>> keyToScheduledMap;
+    private final BlockingScheduledExecutor<K> executor;
     private boolean open;
 
     private boolean stateLogEnabled;
@@ -31,14 +28,13 @@ public class ScheduledStateStore<K, V> implements StateStore {
     private StateStoreLogger<K, Scheduled<K, V>> stateLogger;
 
     public ScheduledStateStore(String name,
-                        ScheduledTaskTransformer<K, V> scheduledTaskTransformer,
-                        long delayInMs, int capacity) {
+                               ScheduledTaskTransformer<K, V> scheduledTaskTransformer,
+                               long delayInMs, int capacity) {
         this.name = name;
         this.scheduledTaskTransformer = scheduledTaskTransformer;
         this.delayInMs = delayInMs;
 
-        this.executor = new BlockingScheduledExecutor(new ScheduledThreadPoolExecutor(1), capacity);
-        keyToScheduledMap = new ConcurrentHashMap<>(capacity);
+        this.executor = new BlockingScheduledExecutor<>(new ScheduledThreadPoolExecutor(1), capacity);
     }
 
     public ScheduledStateStore<K, V> enableStateLog(Serde<K> keySerde, Serde<Scheduled<K, V>> scheduledSerde){
@@ -60,29 +56,19 @@ public class ScheduledStateStore<K, V> implements StateStore {
 
     private void scheduleImpl(Scheduled<K, V> scheduled){
         Runnable command = scheduledTaskTransformer.buildTask(scheduled);
-        scheduled.setScheduledFuture(executor.schedule(
-                () -> {
-                    try {
-                        command.run();
-                    } finally {
-                        keyToScheduledMap.remove(scheduled.key);
-                    }
-                }, delayInMs, TimeUnit.MILLISECONDS));
-        keyToScheduledMap.put(scheduled.key, scheduled);
+        scheduled.setScheduledFuture(executor.schedule(scheduled.key, command, delayInMs, TimeUnit.MILLISECONDS));
     }
 
     public void cancel(K key){
-        Scheduled<K, V> scheduled = keyToScheduledMap.get(key);
-        if(scheduled != null){
-            executor.cancel(scheduled.getScheduledFuture());
-            keyToScheduledMap.remove(key);
+        boolean cancelled = executor.cancel(key);
+        if(cancelled) {
             if(stateLogEnabled) {
                 stateLogger.logRemoved(key);
             }
         } else {
             logger.warn("No scheduled task for key: {}", key);
         }
-        logger.debug("Cancelled scheduled task {} for key {}", scheduled, key);
+        logger.debug("Cancelled scheduled task for key {}", key);
     }
 
     @Override
@@ -111,7 +97,6 @@ public class ScheduledStateStore<K, V> implements StateStore {
 
     @Override
     public void close() {
-        this.keyToScheduledMap.clear();
         this.executor.shutdownNow();
         this.open = false;
     }
@@ -127,7 +112,7 @@ public class ScheduledStateStore<K, V> implements StateStore {
     }
 
     public int size(){
-        return keyToScheduledMap.size();
+        return executor.size();
     }
 
     public interface ScheduledTaskTransformer<K, V>{

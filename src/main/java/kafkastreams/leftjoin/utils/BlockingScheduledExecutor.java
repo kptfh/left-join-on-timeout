@@ -1,56 +1,57 @@
 package kafkastreams.leftjoin.utils;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import java.util.Map;
+import java.util.concurrent.*;
 
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.ScheduledThreadPoolExecutor;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
-
-public class BlockingScheduledExecutor {
-
-    private static Logger logger = LoggerFactory.getLogger(BlockingScheduledExecutor.class);
+public class BlockingScheduledExecutor<K> {
 
     private final ScheduledThreadPoolExecutor executor;
     private final Semaphore semaphore;
+    private final Map<K, ScheduledFuture<?>> keyToScheduledMap;
 
     public BlockingScheduledExecutor(ScheduledThreadPoolExecutor executor, int maxTasksInQueue) {
         this.executor = executor;
         this.executor.setRemoveOnCancelPolicy(false);
-        semaphore = new Semaphore(maxTasksInQueue);
+        this.semaphore = new Semaphore(maxTasksInQueue);
+        this.keyToScheduledMap = new ConcurrentHashMap<>(maxTasksInQueue);
     }
 
-    public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+    public ScheduledFuture<?> schedule(K key, Runnable command, long delay, TimeUnit unit) {
         try {
             semaphore.acquire();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-        return executor.schedule(() -> {
+
+        CountDownLatch addedToMap = new CountDownLatch(1);
+        ScheduledFuture<?> scheduled = executor.schedule(() -> {
             try {
+                addedToMap.await();
                 command.run();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
             } finally {
-                if(!Thread.currentThread().isInterrupted()) {
-                    try {
-                        semaphore.release();
-                    } catch (Error e) {
-                        logger.warn("Excessive semaphore release", e);
-                    }
+                if(keyToScheduledMap.remove(key) != null){
+                    semaphore.release();
                 }
             }
-
         }, delay, unit);
+
+        keyToScheduledMap.put(key, scheduled);
+        addedToMap.countDown();
+
+        return scheduled;
     }
 
-    public boolean cancel(ScheduledFuture<?> scheduledFuture) {
-        if(scheduledFuture.cancel(true)){
-            try {
-                semaphore.release();
-            } catch (Error e) {
-                logger.warn("Excessive semaphore release", e);
-            }
+    public boolean cancel(K key) {
+        ScheduledFuture<?> scheduled = keyToScheduledMap.remove(key);
+        if(scheduled == null) {
+            return false;
+        }
+        if(scheduled.cancel(false)){
+            semaphore.release();
             return true;
         } else {
             return false;
@@ -59,5 +60,14 @@ public class BlockingScheduledExecutor {
 
     public void shutdownNow(){
         executor.shutdownNow();
+        keyToScheduledMap.clear();
+    }
+
+    public int size(){
+        return keyToScheduledMap.size();
+    }
+
+    int semaphoreQueueLength(){
+        return semaphore.getQueueLength();
     }
 }
