@@ -45,6 +45,7 @@ public class LeftJoinOnTimeoutTest {
 
     public static final int NUM_PARTITIONS = 2;
     public static final long KEY_3 = 3L;
+    public static final int SLIDING_WINDOW_DURATION_IN_MS = 100;
 
     @Rule
     public KafkaEmbedded kafkaEmbedded = new KafkaEmbedded(1, false);
@@ -70,7 +71,6 @@ public class LeftJoinOnTimeoutTest {
         joinedMessages = subscribe(TARGET_TOPIC);
     }
 
-
     @After
     public void after() {
         joinedMessages.clear();
@@ -82,10 +82,13 @@ public class LeftJoinOnTimeoutTest {
         KafkaStreams kafkaStreams = buildLeftJoinTopologyLongWindow();
 
         try {
-            send(SOURCE_LHS_TOPIC, 1L, KEY_1, "left");
+            send(SOURCE_LHS_TOPIC, 1L, KEY_1, "left_1");
+            send(SOURCE_LHS_TOPIC, 20L, KEY_1, "left_2");
             send(SOURCE_RHS_TOPIC, 1L, KEY_1, "right");
 
-            await(joinedMessages, new String[]{"key", "value"}, new Tuple(KEY_1, "left+right"));
+            await(joinedMessages, new String[]{"key", "value"},
+                    new Tuple(KEY_1, "left_1+right"),
+                    new Tuple(KEY_1, "left_2+right"));
         } finally {
             closeAndCleanUp(kafkaStreams);
         }
@@ -111,7 +114,6 @@ public class LeftJoinOnTimeoutTest {
         KafkaStreams kafkaStreams = buildLeftJoinTopologyLongWindow();
 
         try {
-
             send(SOURCE_LHS_TOPIC, 1L, KEY_1, "left");
             send(SOURCE_LHS_TOPIC, 1L, KEY_2, "left");
 
@@ -136,7 +138,6 @@ public class LeftJoinOnTimeoutTest {
         KafkaStreams kafkaStreams = buildLeftJoinTopologyLongWindow();
 
         try {
-
             send(SOURCE_LHS_TOPIC, 1L, KEY_1, "left");
             send(SOURCE_LHS_TOPIC, 1L, KEY_3, "left");
 
@@ -165,7 +166,7 @@ public class LeftJoinOnTimeoutTest {
     }
 
     private KafkaStreams buildLeftJoinTopologyShortWindow() {
-        return buildLeftJoinTopology(100);
+        return buildLeftJoinTopology(SLIDING_WINDOW_DURATION_IN_MS);
     }
 
 

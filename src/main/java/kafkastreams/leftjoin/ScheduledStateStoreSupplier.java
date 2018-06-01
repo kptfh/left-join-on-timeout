@@ -30,8 +30,7 @@ public class ScheduledStateStoreSupplier<K, V> implements StateStoreSupplier<Sch
         this.capacity = capacity;
     }
 
-    public ScheduledStateStoreSupplier<K, V> enableStateLog(
-            Serde<K> keySerde, Class<K> keyClass, Class<V> valueClass){
+    public ScheduledStateStoreSupplier<K, V> enableStateLog(Serde<K> keySerde, Class<K> keyClass, Class<V> valueClass){
         this.keySerde = keySerde;
         this.scheduledSerde = scheduledSerde(keyClass, valueClass);
 

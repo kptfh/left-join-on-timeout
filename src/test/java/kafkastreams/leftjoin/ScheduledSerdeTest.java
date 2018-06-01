@@ -3,6 +3,7 @@ package kafkastreams.leftjoin;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.serialization.Serde;
+import org.assertj.core.api.Assertions;
 import org.junit.Test;
 
 import java.io.IOException;
@@ -30,10 +31,10 @@ public class ScheduledSerdeTest {
         Scheduled<Long, String> scheduledDeserialized = scheduledSerde.deserializer().deserialize(null, data);
         assertThat(scheduled).isEqualToIgnoringGivenFields(scheduledDeserialized,
                 SCHEDULED_FUTURE_FIELD_NAME);
-        assertThat((Object)scheduledDeserialized.getScheduledFuture()).isNull();
+        Assertions.<Object>assertThat(scheduledDeserialized.getScheduledFuture()).isNull();
     }
 
-    private static class TestScheduledFuture<V> implements ScheduledFuture<V> {
+    private static class TestScheduledFuture<V> implements ScheduledFuture<V>{
 
         @Override
         public long getDelay(TimeUnit unit) {

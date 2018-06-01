@@ -4,6 +4,7 @@ import org.awaitility.Awaitility;
 import org.awaitility.Duration;
 import org.junit.Test;
 
+import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -28,7 +29,7 @@ public class BlockingScheduledExecutorTest {
         LongAdder sum = new LongAdder();
 
         IntStream.range(0, MAX_TASKS_IN_QUEUE * 5)
-                .mapToObj(value -> scheduleWithShortDelay(value, sum))
+                .mapToObj(value -> scheduleWithShortDelay(sum))
                 .collect(Collectors.toList());
 
         Awaitility.await()
@@ -41,8 +42,8 @@ public class BlockingScheduledExecutorTest {
     public void shouldNotCancelComplete(){
         LongAdder sum = new LongAdder();
 
-        IntStream.range(0, MAX_TASKS_IN_QUEUE * 5)
-                .mapToObj(value -> scheduleWithShortDelay(value, sum))
+        List<ScheduledFuture> futures = IntStream.range(0, MAX_TASKS_IN_QUEUE * 5)
+                .mapToObj(value -> scheduleWithShortDelay(sum))
                 .collect(Collectors.toList());
 
         Awaitility.await()
@@ -50,20 +51,20 @@ public class BlockingScheduledExecutorTest {
                 .pollInterval(Duration.ONE_HUNDRED_MILLISECONDS)
                 .untilAsserted(() -> assertThat(sum.longValue()).isEqualTo(MAX_TASKS_IN_QUEUE * 5));
 
-        assertThat(blockingScheduledExecutor.cancel(0)).isFalse();
+        assertThat(futures.get(0).cancel(false)).isFalse();
     }
 
     @Test
     public void shouldCancel(){
         LongAdder sum = new LongAdder();
 
-        IntStream.range(0, MAX_TASKS_IN_QUEUE)
-                .mapToObj(value -> scheduleWithLongDelay(value, sum))
+        List<ScheduledFuture> futures = IntStream.range(0, MAX_TASKS_IN_QUEUE)
+                .mapToObj(value -> scheduleWithLongDelay(sum))
                 .collect(Collectors.toList());
 
-        blockingScheduledExecutor.cancel(0);
+        futures.get(0).cancel(false);
 
-        scheduleWithLongDelay(MAX_TASKS_IN_QUEUE + 1, sum);
+        scheduleWithLongDelay(sum);
 
         assertThat(sum.longValue()).isEqualTo(0);
     }
@@ -73,7 +74,7 @@ public class BlockingScheduledExecutorTest {
         LongAdder sum = new LongAdder();
 
         ScheduledFuture scheduledFutures = IntStream.range(0, 1)
-                .mapToObj(value -> scheduleWithShortDelay(value, sum))
+                .mapToObj(value -> scheduleWithShortDelay(sum))
                 .collect(Collectors.toList()).get(0);
 
         Awaitility.await()
@@ -81,17 +82,17 @@ public class BlockingScheduledExecutorTest {
                 .pollInterval(Duration.ONE_HUNDRED_MILLISECONDS)
                 .untilAsserted(() -> assertThat(sum.longValue()).isEqualTo(1));
 
-        assertThat(blockingScheduledExecutor.cancel(scheduledFutures)).isFalse();
+        assertThat(scheduledFutures.cancel(false)).isFalse();
     }
 
     @Test
     public void shouldBlockOnCapacityAndUnblockByCancel(){
         LongAdder sum = new LongAdder();
-        IntStream.range(0, MAX_TASKS_IN_QUEUE)
-                .mapToObj(value -> scheduleWithLongDelay(value, sum))
+        List<ScheduledFuture> futures = IntStream.range(0, MAX_TASKS_IN_QUEUE)
+                .mapToObj(value -> scheduleWithLongDelay(sum))
                 .collect(Collectors.toList());
 
-        Thread t = new Thread(() -> scheduleWithLongDelay(MAX_TASKS_IN_QUEUE + 1, sum));
+        Thread t = new Thread(() -> scheduleWithLongDelay(sum));
         t.start();
 
         Awaitility.await()
@@ -101,8 +102,7 @@ public class BlockingScheduledExecutorTest {
 
         assertThat(sum.longValue()).isEqualTo(0);
 
-
-        blockingScheduledExecutor.cancel(0);
+        futures.get(0).cancel(false);
 
         Awaitility.await()
                 .atMost(10, SECONDS)
@@ -122,23 +122,23 @@ public class BlockingScheduledExecutorTest {
         );
 
         Random random = new Random();
-        IntStream.range(0, maxTasksInQueue * 2)
-                .mapToObj(value -> blockingScheduledExecutor.schedule(value, sum::increment, random.nextInt(100), TimeUnit.MILLISECONDS))
+        List<ScheduledFuture> futures = IntStream.range(0, maxTasksInQueue * 2)
+                .mapToObj(value -> blockingScheduledExecutor.schedule(sum::increment, random.nextInt(100), TimeUnit.MILLISECONDS))
                 .collect(Collectors.toList());
 
         IntStream.range(0, maxTasksInQueue * 2)
-                .mapToObj(value -> blockingScheduledExecutor.cancel(value))
+                .mapToObj(i -> futures.get(i).cancel(false))
                 .collect(Collectors.toList());
 
         assertThat(blockingScheduledExecutor.size()).isEqualTo(0);
         assertThat(blockingScheduledExecutor.semaphoreQueueLength()).isEqualTo(0);
     }
 
-    private ScheduledFuture scheduleWithShortDelay(int key, LongAdder sum) {
-        return blockingScheduledExecutor.schedule(key, sum::increment, 1, TimeUnit.MILLISECONDS);
+    private ScheduledFuture scheduleWithShortDelay(LongAdder sum) {
+        return blockingScheduledExecutor.schedule(sum::increment, 1, TimeUnit.MILLISECONDS);
     }
 
-    private ScheduledFuture scheduleWithLongDelay(int key, LongAdder sum) {
-        return blockingScheduledExecutor.schedule(key, sum::increment, 100, TimeUnit.SECONDS);
+    private ScheduledFuture scheduleWithLongDelay(LongAdder sum) {
+        return blockingScheduledExecutor.schedule(sum::increment, 100, TimeUnit.SECONDS);
     }
 }

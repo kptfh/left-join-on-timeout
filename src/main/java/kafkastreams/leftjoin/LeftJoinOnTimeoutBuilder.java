@@ -17,7 +17,7 @@ import static org.apache.commons.lang3.Validate.notNull;
 
 public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
 
-    private static Logger logger = LoggerFactory.getLogger(LeftJoinOnTimeoutBuilder.class);
+    private static Logger log = LoggerFactory.getLogger(LeftJoinOnTimeoutBuilder.class);
 
     public static final String SCHEDULED_STATE_STORE_PREFIX = "LJ_TIME_OUT";
     public static final long DEFAULT_TIMEOUT_GAP_IN_MS = 100;
@@ -153,7 +153,7 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
             ProducerRecord<K, JV> leftJoinedRecord = new ProducerRecord<>(
                     joinTopicName, null, scheduled.timestamp,
                     scheduled.key, joiner.apply(scheduled.value, null));
-            logger.warn("Left joined message send on window end {}", leftJoinedRecord);
+            log.warn("Left joined message send on window end {}", leftJoinedRecord);
             producer.send(leftJoinedRecord);
         };
     }

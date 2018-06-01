@@ -9,23 +9,31 @@ import org.apache.kafka.streams.processor.StateStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
+import static kafkastreams.leftjoin.utils.MultiMapUtils.addToMultiMap;
+import static kafkastreams.leftjoin.utils.MultiMapUtils.removeFromMultiMap;
+
 public class ScheduledStateStore<K, V> implements StateStore {
 
-    private static Logger logger = LoggerFactory.getLogger(ScheduledStateStore.class);
+    private static Logger log = LoggerFactory.getLogger(ScheduledStateStore.class);
 
     private final String name;
     private final long delayInMs;
     private final ScheduledTaskTransformer<K, V> scheduledTaskTransformer;
-    private final BlockingScheduledExecutor<K> executor;
+    private final BlockingScheduledExecutor executor;
+    private final ConcurrentHashMap<K, List<Scheduled<K, V>>> keyToScheduled;
     private boolean open;
 
-    private boolean stateLogEnabled;
+    private boolean stateLogEnabled = false;
     private Serde<K> keySerde;
     private Serde<Scheduled<K, V>> scheduledSerde;
     private StateStoreLogger<K, Scheduled<K, V>> stateLogger;
+
 
     public ScheduledStateStore(String name,
                                ScheduledTaskTransformer<K, V> scheduledTaskTransformer,
@@ -34,41 +42,69 @@ public class ScheduledStateStore<K, V> implements StateStore {
         this.scheduledTaskTransformer = scheduledTaskTransformer;
         this.delayInMs = delayInMs;
 
-        this.executor = new BlockingScheduledExecutor<>(new ScheduledThreadPoolExecutor(1), capacity);
+        this.executor = new BlockingScheduledExecutor(new ScheduledThreadPoolExecutor(1), capacity);
+        this.keyToScheduled = new ConcurrentHashMap<>(capacity);
     }
 
-    public ScheduledStateStore<K, V> enableStateLog(Serde<K> keySerde, Serde<Scheduled<K, V>> scheduledSerde){
+    public ScheduledStateStore<K, V> enableStateLog(Serde<K> keySerde, Serde<Scheduled<K, V>> scheduledSerde) {
         this.keySerde = keySerde;
         this.scheduledSerde = scheduledSerde;
         this.stateLogEnabled = true;
         return this;
     }
 
-    public void schedule(K key, V value, ProcessorContext context){
+    public void schedule(K key, V value, ProcessorContext context) {
         Scheduled<K, V> scheduled = new Scheduled<>(key, value, context.timestamp());
-        scheduleImpl(scheduled);
+        scheduleImpl(key, scheduled);
 
-        if(stateLogEnabled) {
+        if (stateLogEnabled) {
             stateLogger.logAdded(key, scheduled);
         }
-        logger.debug("Scheduled task {} for key {}", scheduled, key);
+        log.debug("Scheduled task {} for key {}", scheduled, key);
     }
 
-    private void scheduleImpl(Scheduled<K, V> scheduled){
-        Runnable command = scheduledTaskTransformer.buildTask(scheduled);
-        scheduled.setScheduledFuture(executor.schedule(scheduled.key, command, delayInMs, TimeUnit.MILLISECONDS));
+    private void scheduleImpl(K key, Scheduled<K, V> scheduled) {
+        addToMultiMap(keyToScheduled, key, key_ -> {
+            Runnable command = scheduledTaskTransformer.buildTask(scheduled);
+            scheduled.setScheduledFuture(executor.schedule(() -> {
+                try {
+                    command.run();
+                } finally {
+                    removeFromMultiMap(keyToScheduled, key_, scheduled);
+                }
+            }, delayInMs, TimeUnit.MILLISECONDS));
+            return scheduled;
+        });
     }
 
-    public void cancel(K key){
-        boolean cancelled = executor.cancel(key);
-        if(cancelled) {
-            if(stateLogEnabled) {
+    public void cancel(K key) {
+        keyToScheduled.compute(key, (key_, scheduleds) -> {
+
+            if (scheduleds == null) {
+                log.warn("No scheduled tasks for key: {}", key);
+                return null;
+            }
+
+            scheduleds.forEach(scheduled -> {
+                ScheduledFuture scheduledFuture = scheduled.getScheduledFuture();
+                boolean cancelled = scheduledFuture.cancel(false);
+
+                if (!cancelled) {
+                    if (scheduledFuture.isCancelled()) {
+                        log.warn("Task already cancelled for keyOffset: {}", key);
+                    } else {
+                        log.warn("Task already complete for keyOffset: {}", key);
+                    }
+                }
+            });
+
+            if (stateLogEnabled) {
                 stateLogger.logRemoved(key);
             }
-        } else {
-            logger.warn("No scheduled task for key: {}", key);
-        }
-        logger.debug("Cancelled scheduled task for key {}", key);
+
+            log.debug("Cancelled scheduled task for key {}", key);
+            return null;
+        });
     }
 
     @Override
@@ -78,13 +114,13 @@ public class ScheduledStateStore<K, V> implements StateStore {
 
     @Override
     public void init(ProcessorContext context, StateStore root) {
-        if(stateLogEnabled) {
+        if (stateLogEnabled) {
             this.stateLogger = new StateStoreLogger<>(name, context, keySerde, scheduledSerde);
 
             context.register(this, true, (k, v) -> {
                 KeyValue<K, Scheduled<K, V>> keyValue = stateLogger.readChange(k, v);
-                scheduleImpl(keyValue.value);
-                logger.debug("Scheduled task {} restored for key {}", keyValue.value, keyValue.key);
+                scheduleImpl(keyValue.key, keyValue.value);
+                log.debug("Scheduled task {} restored for key {}", keyValue.value, keyValue.key);
             });
         }
 
@@ -111,11 +147,11 @@ public class ScheduledStateStore<K, V> implements StateStore {
         return open;
     }
 
-    public int size(){
+    public int size() {
         return executor.size();
     }
 
-    public interface ScheduledTaskTransformer<K, V>{
+    public interface ScheduledTaskTransformer<K, V> {
         Runnable buildTask(Scheduled<K, V> scheduled);
     }
 }

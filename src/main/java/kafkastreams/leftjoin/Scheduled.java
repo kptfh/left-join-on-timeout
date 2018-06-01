@@ -6,8 +6,6 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.concurrent.ScheduledFuture;
 
-import static org.apache.commons.lang3.Validate.isTrue;
-
 public class Scheduled<K, V> {
     public final K key;
     public final V value;
@@ -26,16 +24,13 @@ public class Scheduled<K, V> {
     }
 
     public void setScheduledFuture(ScheduledFuture scheduledFuture) {
-        isTrue(this.scheduledFuture == null, "Already initialized");
+        if(this.scheduledFuture != null){
+            throw new IllegalStateException("Already initialized");
+        }
         this.scheduledFuture = scheduledFuture;
     }
 
     public ScheduledFuture getScheduledFuture() {
         return scheduledFuture;
-    }
-
-    @Override
-    public String toString(){
-        return String.format("key=%s, value=%s, timestamp=%s", key, value, timestamp);
     }
 }
