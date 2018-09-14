@@ -66,7 +66,7 @@ public class LeftJoinOnTimeoutTest {
         adminClient.createTopics(TOPICS.stream().map(name -> new NewTopic(name, NUM_PARTITIONS, (short)1))
                 .collect(Collectors.toList())).all().get();
 
-        producer = producer();
+        producer = producer(LongSerializer.class, StringSerializer.class);
 
         joinedMessages = subscribe(TARGET_TOPIC);
     }
@@ -179,7 +179,7 @@ public class LeftJoinOnTimeoutTest {
         new LeftJoinOnTimeoutBuilder<>(kStreamBuilder, sourceLhs, sourceRhs,
                 (lhs, rhs) -> StringUtils.isNotEmpty(rhs) ? lhs + "+" + rhs : lhs + "+",
                 joinerSlidingWindowDurationInMs)
-                .sinkTo(TARGET_TOPIC, producer)
+                .sinkTo(TARGET_TOPIC, producer(ByteArraySerializer.class, ByteArraySerializer.class))
                 .serdes(Serdes.Long(), Serdes.String(), Serdes.String(), Serdes.String())
                 .enableStateLog(Long.class, String.class).buildTopology();
 
@@ -215,8 +215,8 @@ public class LeftJoinOnTimeoutTest {
         }
     }
 
-    private Producer<Long, String> producer(){
-        return new KafkaProducer<>(producerConfigs());
+    private <K, V> Producer<K, V> producer(Class keySerializer, Class valueSerializer){
+        return new KafkaProducer<>(producerConfigs(keySerializer, valueSerializer));
     }
 
 
@@ -270,11 +270,11 @@ public class LeftJoinOnTimeoutTest {
         return props;
     }
 
-    private Map<String, Object> producerConfigs() {
+    private Map<String, Object> producerConfigs(Class keySerializer, Class valueSerializer) {
         Map<String, Object> props = new HashMap<>();
         props.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, kafkaEmbedded.getBrokersAsString());
-        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, LongSerializer.class);
-        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, keySerializer);
+        props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, valueSerializer);
         return props;
     }
 }

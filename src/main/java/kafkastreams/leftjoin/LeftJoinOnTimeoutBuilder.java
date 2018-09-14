@@ -3,6 +3,7 @@ package kafkastreams.leftjoin;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.Serde;
+import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.streams.kstream.JoinWindows;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KStreamBuilder;
@@ -27,10 +28,10 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
     private KStream<K, LV> lhsStream;
     private KStream<K, RV> rhsStream;
     private ValueJoiner<? super LV, ? super RV, ? extends JV> joiner;
-    private Producer<K, JV> producerTemplate;
+    private Producer<byte[], byte[]> producer;
     private String joinTopicName;
     private long joinWindowInMs;
-    private long leftJoinTimeoutInMs = -1;
+    private long leftJoinTimeoutInMs;
     private int maxScheduled;
     private Serde<K> keySerde;
     private Serde<LV> lhsSerde;
@@ -56,9 +57,10 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
         this.maxScheduled = DEFAULT_SCHEDULED_CAPACITY;
     }
 
-    public LeftJoinOnTimeoutBuilder<K, LV, RV, JV> sinkTo(String joinTopicName, Producer<K, JV> producerTemplate){
+    public LeftJoinOnTimeoutBuilder<K, LV, RV, JV> sinkTo(
+            String joinTopicName, Producer<byte[], byte[]> producer){
         this.joinTopicName = joinTopicName;
-        this.producerTemplate = producerTemplate;
+        this.producer = producer;
         return this;
     }
 
@@ -92,8 +94,10 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
 
         String scheduledStoreName = kStreamBuilder.newStoreName(SCHEDULED_STATE_STORE_PREFIX + "-" + joinTopicName+"-");
 
-        ScheduledStateStoreSupplier<K, LV> scheduledStoreSupplier = getScheduledStoreSupplier(scheduledStoreName,
-                joiner, producerTemplate, joinTopicName, leftJoinTimeoutInMs, maxScheduled);
+        ScheduledStateStoreSupplier<K, LV> scheduledStoreSupplier = getScheduledStoreSupplier(
+                scheduledStoreName,
+                joiner, joinTopicName, keySerde.serializer(), joinedSerde.serializer(),
+                producer, leftJoinTimeoutInMs, maxScheduled);
         if(keyClass != null){
             scheduledStoreSupplier = scheduledStoreSupplier.enableStateLog(keySerde, keyClass, lhsClass);
         }
@@ -122,7 +126,7 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
         isTrue(joinWindowInMs > 0, "joinWindowInMs should be positive");
         isTrue(leftJoinTimeoutInMs > joinWindowInMs, "leftJoinTimeoutInMs should be out of joinWindowInMs");
         notNull(joinTopicName, "joinTopicName is mandatory argument");
-        notNull(producerTemplate, "producerTemplate is mandatory argument");
+        notNull(producer, "producerTemplate is mandatory argument");
         notNull(keySerde, "keySerde is mandatory argument");
         notNull(lhsSerde, "lhsSerde is mandatory argument");
         notNull(rhsSerde, "rhsSerde is mandatory argument");
@@ -138,21 +142,27 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
     private static <K, LV, RV, JV> ScheduledStateStoreSupplier<K, LV> getScheduledStoreSupplier(
             String name,
             ValueJoiner<? super LV, ? super RV, ? extends JV> joiner,
-            Producer<K, JV> producerTemplate, String joinTopicName,
+            String joinTopicName,
+            Serializer<K> keySerializer, Serializer<JV> joinedSerializer,
+            Producer<byte[], byte[]> producer,
             long windowDurationInMs, int maxScheduled) {
         return new ScheduledStateStoreSupplier<>(
                 name,
-                sendLeftJoinedMessage(producerTemplate, joinTopicName, joiner),
+                sendLeftJoinedMessage(joinTopicName, keySerializer, joinedSerializer, producer, joiner),
                 windowDurationInMs, TimeUnit.MILLISECONDS, maxScheduled);
     }
 
     private static <K, LV, RV, JV> ScheduledStateStore.ScheduledTaskTransformer<K, LV> sendLeftJoinedMessage(
-            Producer<K, JV> producer, String joinTopicName,
+            String joinTopicName,
+            Serializer<K> keySerializer, Serializer<JV> joinedSerializer,
+            Producer<byte[], byte[]> producer,
             ValueJoiner<? super LV, ? super RV, ? extends JV> joiner) {
         return scheduled -> () -> {
-            ProducerRecord<K, JV> leftJoinedRecord = new ProducerRecord<>(
+            JV leftJoinedValue = joiner.apply(scheduled.value, null);
+            ProducerRecord<byte[], byte[]> leftJoinedRecord = new ProducerRecord<>(
                     joinTopicName, null, scheduled.timestamp,
-                    scheduled.key, joiner.apply(scheduled.value, null));
+                    keySerializer.serialize(joinTopicName, scheduled.key),
+                    joinedSerializer.serialize(joinTopicName, leftJoinedValue));
             log.warn("Left joined message send on window end {}", leftJoinedRecord);
             producer.send(leftJoinedRecord);
         };

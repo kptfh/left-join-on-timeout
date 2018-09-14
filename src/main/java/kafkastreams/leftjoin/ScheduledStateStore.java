@@ -69,7 +69,11 @@ public class ScheduledStateStore<K, V> implements StateStore {
             scheduled.setScheduledFuture(executor.schedule(() -> {
                 try {
                     command.run();
-                } finally {
+                }
+                catch (Throwable t){
+                    log.error("Error while running scheduled task", t);
+                }
+                finally {
                     removeFromMultiMap(keyToScheduled, key_, scheduled);
                 }
             }, delayInMs, TimeUnit.MILLISECONDS));
