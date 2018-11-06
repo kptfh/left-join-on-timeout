@@ -30,7 +30,8 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
     private ValueJoiner<? super LV, ? super RV, ? extends JV> joiner;
     private Producer<byte[], byte[]> producer;
     private String joinTopicName;
-    private long joinWindowInMs;
+    private long joinWindowDurationInMs;
+    private long joinWindowRetentionInMs;
     private long leftJoinTimeoutInMs;
     private int maxScheduled;
     private Serde<K> keySerde;
@@ -46,14 +47,16 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
             KStream<K, LV> lhsStream,
             KStream<K, RV> rhsStream,
             ValueJoiner<? super LV, ? super RV, ? extends JV> joiner,
-            long joinWindowInMs) {
+            long joinWindowDurationInMs,
+            long joinWindowRetentionInMs) {
 
         this.kStreamBuilder = kStreamBuilder;
         this.lhsStream = lhsStream;
         this.rhsStream = rhsStream;
         this.joiner = joiner;
-        this.joinWindowInMs = joinWindowInMs;
-        this.leftJoinTimeoutInMs = joinWindowInMs + DEFAULT_TIMEOUT_GAP_IN_MS;
+        this.joinWindowDurationInMs = joinWindowDurationInMs;
+        this.joinWindowRetentionInMs = joinWindowRetentionInMs;
+        this.leftJoinTimeoutInMs = joinWindowDurationInMs + DEFAULT_TIMEOUT_GAP_IN_MS;
         this.maxScheduled = DEFAULT_SCHEDULED_CAPACITY;
     }
 
@@ -108,7 +111,7 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
 
         KStream<K, JV> joinedStream = lhsStream.join(rhsStream,
                 joiner,
-                JoinWindows.of(joinWindowInMs),
+                JoinWindows.of(joinWindowDurationInMs).until(joinWindowRetentionInMs),
                 keySerde, lhsSerde, rhsSerde);
 
         joinedStream.process(() -> new CancelProcessor<>(scheduledStoreName), scheduledStoreName);
@@ -123,8 +126,8 @@ public class LeftJoinOnTimeoutBuilder<K, LV, RV, JV> {
         notNull(lhsStream, "lhsStream is mandatory argument");
         notNull(rhsStream, "rhsStream is mandatory argument");
         notNull(joiner, "joiner is mandatory argument");
-        isTrue(joinWindowInMs > 0, "joinWindowInMs should be positive");
-        isTrue(leftJoinTimeoutInMs > joinWindowInMs, "leftJoinTimeoutInMs should be out of joinWindowInMs");
+        isTrue(joinWindowDurationInMs > 0, "joinWindowDurationInMs should be positive");
+        isTrue(leftJoinTimeoutInMs > joinWindowDurationInMs, "leftJoinTimeoutInMs should be out of joinWindowDurationInMs");
         notNull(joinTopicName, "joinTopicName is mandatory argument");
         notNull(producer, "producerTemplate is mandatory argument");
         notNull(keySerde, "keySerde is mandatory argument");

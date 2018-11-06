@@ -162,15 +162,18 @@ public class LeftJoinOnTimeoutTest {
     }
 
     private KafkaStreams buildLeftJoinTopologyLongWindow() {
-        return buildLeftJoinTopology(TimeUnit.SECONDS.toMillis(100));
+        return buildLeftJoinTopology(
+                TimeUnit.SECONDS.toMillis(100),
+                TimeUnit.SECONDS.toMillis(300));
     }
 
     private KafkaStreams buildLeftJoinTopologyShortWindow() {
-        return buildLeftJoinTopology(SLIDING_WINDOW_DURATION_IN_MS);
+        return buildLeftJoinTopology(SLIDING_WINDOW_DURATION_IN_MS, SLIDING_WINDOW_DURATION_IN_MS * 3);
     }
 
 
-    private KafkaStreams buildLeftJoinTopology(long joinerSlidingWindowDurationInMs){
+    private KafkaStreams buildLeftJoinTopology(
+            long joinerSlidingWindowDurationInMs, long joinerSlidingWindowRetentionInMs){
         KStreamBuilder kStreamBuilder = new KStreamBuilder();
 
         KStream<Long, String> sourceLhs = kStreamBuilder.stream(Serdes.Long(), Serdes.String(), SOURCE_LHS_TOPIC);
@@ -178,7 +181,7 @@ public class LeftJoinOnTimeoutTest {
 
         new LeftJoinOnTimeoutBuilder<>(kStreamBuilder, sourceLhs, sourceRhs,
                 (lhs, rhs) -> StringUtils.isNotEmpty(rhs) ? lhs + "+" + rhs : lhs + "+",
-                joinerSlidingWindowDurationInMs)
+                joinerSlidingWindowDurationInMs, joinerSlidingWindowRetentionInMs)
                 .sinkTo(TARGET_TOPIC, producer(ByteArraySerializer.class, ByteArraySerializer.class))
                 .serdes(Serdes.Long(), Serdes.String(), Serdes.String(), Serdes.String())
                 .enableStateLog(Long.class, String.class).buildTopology();

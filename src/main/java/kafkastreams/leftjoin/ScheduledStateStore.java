@@ -69,6 +69,9 @@ public class ScheduledStateStore<K, V> implements StateStore {
             scheduled.setScheduledFuture(executor.schedule(() -> {
                 try {
                     command.run();
+                    if (stateLogEnabled) {
+                        stateLogger.logRemoved(key);
+                    }
                 }
                 catch (Throwable t){
                     log.error("Error while running scheduled task", t);
