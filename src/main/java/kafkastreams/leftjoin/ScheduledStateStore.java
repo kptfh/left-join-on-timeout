@@ -129,6 +129,8 @@ public class ScheduledStateStore<K, V> implements StateStore {
                 scheduleImpl(keyValue.key, keyValue.value);
                 log.debug("Scheduled task {} restored for key {}", keyValue.value, keyValue.key);
             });
+        } else {
+            context.register(this, false, null);
         }
 
         this.open = true;
